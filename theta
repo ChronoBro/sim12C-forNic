@@ -1,0 +1,22 @@
+      x =frag1.recon->theta*180./plf.pi*cos(frag1.recon->phi);//remember to change these back
+      y =frag1.recon->theta*180./plf.pi*sin(frag1.recon->phi);
+	  x =frag1.real->theta*180./plf.pi*cos(frag1.recon->phi);
+	  y =frag1.real->theta*180./plf.pi*sin(frag1.recon->phi);
+	  x =frag2.real->theta*180./plf.pi*cos(frag1.recon->phi);
+	  y =frag2.real->theta*180./plf.pi*sin(frag1.recon->phi);
+      // if (frag1.recon->getVelocity()>7.07) continue; // for 1cm thick CsI
+      //if (frag1.recon->getVelocity()>8.56) continue; //velocity (cm/ns) where the triton will punch through 2cm thick CsI
+      hist_theta_check.Fill(frag1.real->theta*180./3.14159,frag1.recon->theta*180./3.14159);
+      hist_phi_check.Fill(frag1.real->phi*180./3.14159,frag1.recon->phi*180./3.14159);
+      float ErelT = frag1.recon->energy; //stuff i added
+      float Ex_target = epa2_mean*7. - ekr - frag1.recon->energy - 
+		 cout << "frag1.recon->theta = " << frag1.recon->theta << endl;
+		 cout << "frag1.recon->phi = " << frag1.recon->phi << endl;
+       x =frag1.recon->theta*180./plf.pi*cos(frag1.recon->phi);//remember to change these back
+       y =frag1.recon->theta*180./plf.pi*sin(frag1.recon->phi);
+		 cout << "frag1 recon thetaCM = " << frag1.recon->theta*180./3.1415927 << endl << endl;
+		 cout << "frag1 recon phi = " << frag1.recon->phi*180./3.1415927 << endl << endl;
+		 cout << "frag1 recon v = " << frag1.recon->velocity << endl << endl;
+      vz_He3 = frag1.recon->v[2];
+      vx_He3 = frag1.recon->v[0]*cos(decay.plfRecon->phi) + frag1.recon->v[1]*sin(decay.plfRecon->phi);
+      vy_He3 = -frag1.recon->v[0]*sin(decay.plfRecon->phi) + frag1.recon->v[1]*cos(decay.plfRecon->phi); 

@@ -1,0 +1,1 @@
+c++ -c -O2 -std=c++11 -I/usr/local/ROOT6/include -g sim.cpp -o sim.o

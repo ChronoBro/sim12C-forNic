@@ -1,0 +1,365 @@
+#include "plf.h"
+#include "TFile.h"
+#include "TH1I.h"
+using namespace std;
+
+CRandom CPlf::ran;
+float const CPlf::pi = acos(-1.);
+
+/**
+ * Constructor
+ \param thickness is target thickness in mg/cm2
+*/
+
+CPlf::CPlf(float thickness)
+{
+
+  TFile fx ("corr_6Li.root");
+  TH1I* hx = (TH1I*) fx.Get("Li6/vel_6Li_1_el");
+
+  N = 0;
+  double sum = 0.;
+  for (int i=1;i<200;i++)
+    {
+      float x = hx->GetBinCenter(i);
+      if (x < 7) continue;
+      if (x > 12.6) break;
+
+      float y = hx->GetBinContent(i);
+
+
+      //correction for efficiencey
+      //float eff1 = -.0416*x + 1.423;
+      //float eff2 = .647 + .036036*x;
+      //float eff = eff1;
+
+      //y /= eff;
+
+      xx[N] = x;
+      yy[N] = y;
+      N++;
+      sum += y;
+    }
+
+  for (int i=0;i<N;i++)
+    {
+      yy[i] /= sum;
+      if (i > 0) yy[i] += yy[i-1];
+    }
+
+
+
+  temp1 = 1.*pi/180.; 
+  temp2 = .2*pi/180.;
+  frame = new CFrame(6.);
+  Q = new CFrame(7.);
+  QP = new CFrame(7.);
+  float thick = thickness/1000./9.*6.02e23; // atoms/ cem2
+  multScat =  new CMultScat(4,4,thick);
+}
+//********************************************
+  /**
+   * Destructor
+   */
+CPlf::~CPlf()
+{
+  delete frame;
+  delete Q;
+  delete QP;
+  delete multScat;
+}
+//********************************************
+  /**
+   * Monte Carlo selection of the angle and velocity of the parent fragment
+   */
+void CPlf::GetPlf(float tfact)
+{
+
+  float phi = 2.*pi*ran.Rndm();
+
+
+
+  if (ran.Rndm() < .27)
+    {
+       if (ran.Rndm() < .4)
+	{
+         theta = ran.Gaus(3.2/180.*3.14159,.04/180.*3.14159);
+	}
+       else if (ran.Rndm() < 0.5)theta = ran.Gaus(4.0/180.*3.14159,.03/180.*3.14159);
+
+      else theta = ran.Gaus(4.7/180.*3.14159,.03/180.*3.14159);
+
+    }
+  else if (ran.Rndm() < .06) theta = ran.Gaus(8.6/180.*3.14159,.6/180.*3.14159);
+  else 
+    {
+     if(ran.Rndm()>0.1)theta = sqrt(temp1)*sqrt(-log(ran.Rndm()+1.e-32));
+     else theta = sqrt(temp2)*sqrt(-log(ran.Rndm()+1.e-32));
+    }
+  float x = ran.Rndm();
+  float vv;
+  int i = 0;
+  for (;;)
+    {
+      if (yy[i] >= x)break;
+      i++; 
+    }
+
+    vv = xx[i] ;
+  //float vv = 10.54;  
+
+    float v[3];
+    v[0] = vv*sin(theta)*cos(phi);
+    v[1] = vv*sin(theta)*sin(phi);
+    v[2] = vv*cos(theta);
+
+    for(int i=0;i<3;i++)frame->v[i] = v[i];
+    frame->velocity= vv;
+    frame->theta = theta;
+    frame->phi=phi;
+
+
+    for (int i=0;i<3;i++)Q->v[i] = frame->v[i];
+    Q->v[2] -= 10.653;
+    vv = 0.;
+    for (int i=0;i<3;i++) vv += pow(Q->v[i],2);
+    Q->velocity = sqrt(vv);
+    Q->theta = acos(Q->v[2]/sqrt(vv));
+    Q->phi = frame->phi;
+
+    float angleQP = Q->theta+0.*.0175;
+    QP->v[0] = -cos(angleQP)*cos(frame->phi);
+    QP->v[1] = -cos(angleQP)*sin(frame->phi);
+    QP->v[2] = sin(angleQP);
+
+    QP->velocity = 1;
+    QP->theta = acos(QP->v[2]);
+    QP->phi = frame->phi;
+
+
+
+}
+//*************************************************
+  /**
+   * selects breakup angle of parent fragments (isotropic distribution)
+   */
+void CPlf::isotropic()
+{
+  theta_breakup = acos(1.-2.*ran.Rndm());
+  phi_breakup = 2.*pi*ran.Rndm();
+
+  unit_breakup[0] = sin(theta_breakup)*cos(phi_breakup);
+  unit_breakup[1] = sin(theta_breakup)*sin(phi_breakup);
+  unit_breakup[2] = cos(theta_breakup);
+
+}
+//*************************************************
+  /**
+   * Selects break angle of parent fragment.
+   * the distribution is assumed to be isotropic in-plane i.e. 1/sin(theta)
+   */
+void CPlf::inplane()
+{
+  theta_breakup =pi*ran.Rndm();
+  phi_breakup = 2.*pi*ran.Rndm();
+
+  unit_breakup[0] = sin(theta_breakup)*cos(phi_breakup);
+  unit_breakup[1] = sin(theta_breakup)*sin(phi_breakup);
+  unit_breakup[2] = cos(theta_breakup);
+
+
+  //rotate along axis of plf
+  //first the x-z plane
+  float xd = unit_breakup[0]*cos(theta) + unit_breakup[2]*sin(theta);
+  float yd = unit_breakup[1];
+  float zd = unit_breakup[2]*cos(theta) - unit_breakup[0]*sin(theta);
+
+  //then in x-y plane
+  float xdd = xd*cos(phi) + yd*sin(phi);
+  float ydd = yd*cos(phi) - xd*sin(phi);
+  float zdd = zd;
+
+  unit_breakup[0] = xdd;
+  unit_breakup[1] = ydd;
+  unit_breakup[2] = zdd;
+
+
+}
+
+//************************************************
+  //include beam divergence
+void CPlf::BeamDivergence(float deltaTheta,float deltaPhi)
+{
+
+  float x = sin(deltaTheta)*cos(deltaPhi);
+  float y = sin(deltaTheta)*sin(deltaPhi);
+  float z = cos(deltaTheta);
+
+
+
+  //rotate in z-x plane by theta
+  float xx = x*cos(frame->theta) + z*sin(frame->theta);
+  float yy = y;
+  float zz = z*cos(frame->theta) - x*sin(frame->theta);
+
+
+  //rotate in x-y plane
+  float xxx = xx*cos(frame->phi) - yy*sin(frame->phi);
+  float yyy = yy*cos(frame->phi) + xx*sin(frame->phi);
+  float zzz = zz;
+
+
+  float thetaNew = acos(zzz);
+  float phiNew = atan2(yyy,xxx);
+  if (phiNew < 0.) phiNew += 2.*pi;
+
+  //here it is screwing stuff up!
+  frame->theta = thetaNew;
+  frame->phi = phiNew;
+  frame->v[0] = frame->velocity*cos(phiNew)*sin(thetaNew);
+  frame->v[1] = frame->velocity*sin(phiNew)*sin(thetaNew);
+  frame->v[2] = frame->velocity*cos(thetaNew);
+
+
+  //rotate in z-x plane by theta
+  xx = x*cos(Q->theta) + z*sin(Q->theta);
+  yy = y;
+  zz = z*cos(Q->theta) - x*sin(Q->theta);
+
+
+  //rotate in x-y plane
+  xxx = xx*cos(Q->phi) - yy*sin(Q->phi);
+  yyy = yy*cos(Q->phi) + xx*sin(Q->phi);
+  zzz = zz;
+
+
+  thetaNew = acos(zzz);
+  phiNew = atan2(yyy,xxx);
+  if (phiNew < 0.) phiNew += 2.*pi;
+
+  Q->theta = thetaNew;
+  Q->phi = phiNew;
+  Q->v[0] = Q->velocity*cos(phiNew)*sin(thetaNew);
+  Q->v[1] = Q->velocity*sin(phiNew)*sin(thetaNew);
+  Q->v[2] = Q->velocity*cos(thetaNew);
+
+
+
+  //rotate in z-x plane by theta
+  xx = x*cos(QP->theta) + z*sin(QP->theta);
+  yy = y;
+  zz = z*cos(QP->theta) - x*sin(QP->theta);
+
+
+  //rotate in x-y plane
+  xxx = xx*cos(QP->phi) - yy*sin(QP->phi);
+  yyy = yy*cos(QP->phi) + xx*sin(QP->phi);
+  zzz = zz;
+
+
+  thetaNew = acos(zzz);
+  phiNew = atan2(yyy,xxx);
+  if (phiNew < 0.) phiNew += 2.*pi;
+
+  QP->theta = thetaNew;
+  QP->phi = phiNew;
+  QP->v[0] = QP->velocity*cos(phiNew)*sin(thetaNew);
+  QP->v[1] = QP->velocity*sin(phiNew)*sin(thetaNew);
+  QP->v[2] = QP->velocity*cos(thetaNew);
+}
+
+//***********************************************
+//include multiple scattering
+  /**
+   * multiple scattering of parent fragment
+   \param fractionalThick fractional thickness of the target through which
+    the parent passes before it decays (mg.cm2)
+   */
+void CPlf::MultiScat(float fractionalThick)
+{
+  if (fractionalThick == 0.) return;
+  frame->getEnergy();
+  float thetaRMS = multScat->thetaRMS(frame->energy,fractionalThick);
+  float sigma = thetaRMS/sqrt(2.);
+  //cout << "thetaRMS= " << thetaRMS << endl;
+  float deltaTheta = sqrt(2.)*sigma*sqrt(-log(ran.Rndm()));
+  //cout << "deltaTheta= " << deltaTheta << endl;
+  float deltaPhi = 2.*pi*ran.Rndm();
+  //cout << "delta Phi= " << deltaPhi << endl;
+
+  float x = sin(deltaTheta)*cos(deltaPhi);
+  float y = sin(deltaTheta)*sin(deltaPhi);
+  float z = cos(deltaTheta);
+
+
+
+  //rotate in z-x plane by theta
+  float xx = x*cos(frame->theta) + z*sin(frame->theta);
+  float yy = y;
+  float zz = z*cos(frame->theta) - x*sin(frame->theta);
+
+
+  //rotate in x-y plane
+  float xxx = xx*cos(frame->phi) - yy*sin(frame->phi);
+  float yyy = yy*cos(frame->phi) + xx*sin(frame->phi);
+  float zzz = zz;
+
+
+  float thetaNew = acos(zzz);
+  float phiNew = atan2(yyy,xxx);
+  if (phiNew < 0.) phiNew += 2.*pi;
+
+  frame->theta = thetaNew;
+  frame->phi = phiNew;
+  frame->v[0] = frame->velocity*cos(phiNew)*sin(thetaNew);
+  frame->v[1] = frame->velocity*sin(phiNew)*sin(thetaNew);
+  frame->v[2] = frame->velocity*cos(thetaNew);
+
+  //rotate in z-x plane by theta
+  xx = x*cos(Q->theta) + z*sin(Q->theta);
+  yy = y;
+  zz = z*cos(Q->theta) - x*sin(Q->theta);
+
+
+  //rotate in x-y plane
+  xxx = xx*cos(Q->phi) - yy*sin(Q->phi);
+  yyy = yy*cos(Q->phi) + xx*sin(Q->phi);
+  zzz = zz;
+
+
+  thetaNew = acos(zzz);
+  phiNew = atan2(yyy,xxx);
+  if (phiNew < 0.) phiNew += 2.*pi;
+
+  Q->theta = thetaNew;
+  Q->phi = phiNew;
+  Q->v[0] = Q->velocity*cos(phiNew)*sin(thetaNew);
+  Q->v[1] = Q->velocity*sin(phiNew)*sin(thetaNew);
+  Q->v[2] = Q->velocity*cos(thetaNew);
+
+
+  //rotate in z-x plane by theta
+  xx = x*cos(QP->theta) + z*sin(QP->theta);
+  yy = y;
+  zz = z*cos(QP->theta) - x*sin(QP->theta);
+
+
+  //rotate in x-y plane
+  xxx = xx*cos(QP->phi) - yy*sin(QP->phi);
+  yyy = yy*cos(QP->phi) + xx*sin(QP->phi);
+  zzz = zz;
+
+
+  thetaNew = acos(zzz);
+  phiNew = atan2(yyy,xxx);
+  if (phiNew < 0.) phiNew += 2.*pi;
+
+  QP->theta = thetaNew;
+  QP->phi = phiNew;
+  QP->v[0] = QP->velocity*cos(phiNew)*sin(thetaNew);
+  QP->v[1] = QP->velocity*sin(phiNew)*sin(thetaNew);
+  QP->v[2] = QP->velocity*cos(thetaNew);
+
+
+
+}

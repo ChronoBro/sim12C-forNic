@@ -1,0 +1,37 @@
+     //     plf.frame->phi= acos(-1.)*2.*plf.ran.Rndm();
+     // cout << "original phi = " << plf.frame->phi << endl;
+     help[0]=sin(theta)*cos(plf.frame->phi);
+     help[1]=sin(theta)*sin(plf.frame->phi);
+     plf.frame->phi = atan2(help[1],help[0]);
+     //cout << "new phi = " << plf.frame->phi << endl;
+     plf.frame->velocity = pp/Epp*c; 
+     plf.frame->theta = acos(ppara/pp);
+     plf.Q->v[0] = pperp*cos(plf.frame->phi);
+     plf.Q->v[1] = pperp*sin(plf.frame->phi);
+     plf.Q->phi = plf.frame->phi;
+      hist_vel_P.Fill(plf.frame->velocity);
+      hist_theta_P.Fill(plf.frame->theta*180./plf.pi);
+      hist_phi_P.Fill(plf.frame->phi*180./plf.pi);
+      decay.Mode(ET,plf.frame->phi);  //for some reason deltaPhi (Chi) calculated in decay.Mode was not matching up with the reconstruction which used decay.getErel(Recon), so I changed it to calculate input Chi from decay.ErelReal() and now they match. Should figure out what's wrong since my effeciencies do not match my data quantitatively (qualitatively things line up) 3/8/2016, //I believe the issue is that decay.Mode doesn't affect the variables that decay.getErel uses, this is rather confirmed by the fact that ErelP called belowed never gets used.If I can calculate the momentum of the fragments using Psi and Chi then I should be able to use decay.getErel without issues
+      //decay.Mode(ET,plf.frame->phi,alpha); 
+      float * temp = R.vect_mult(plf.frame->v);
+      plf.frame->v[0]=temp[0];
+      plf.frame->v[1]=temp[1];
+      plf.frame->v[2]=temp[2];
+      frag1.AddVelocity(plf.frame->v);
+      frag2.AddVelocity(plf.frame->v);
+      try_chi = try_chi - plf.frame->phi;
+      if(plf.frame->theta*180/3.1415927 < 3)hist_cosPsi_lowAngle_P.Fill(cos(decay.theta));
+      else if (plf.frame->theta*180/3.1415927 < 7)hist_cosPsi_midAngle_P.Fill(cos(decay.theta));
+      if (plf.frame->theta > .0349)
+	if(plf.frame->theta*180/3.14159 <3)
+	if (plf.frame->theta*180/3.14151927 < 7 && plf.frame->theta*180/3.14151927 >3) 
+      float vx_He3 = frag1.real->v[0]*cos(plf.frame->phi) 
+             + frag1.real->v[1]*sin(plf.frame->phi);
+      float vy_He3 = -frag1.real->v[0]*sin(plf.frame->phi) 
+             + frag1.real->v[1]*cos(plf.frame->phi); 
+      if (plf.frame->theta > .0349)hist_chiQ_P.Fill(chiQ*180./acos(-1.));
+      if (plf.frame->theta > .0349)hist_chiQP_P.Fill(chiQP*180./acos(-1.));
+		 cout << "7Li actual theta = " << plf.frame->theta*180/3.1415927 << endl;
+		 cout << "7Li actual phi = " << plf.frame->phi*180/3.14159 << endl;
+		 hist_theta_test2.Fill(plf.frame->theta*180/3.14159);

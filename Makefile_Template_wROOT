@@ -1,0 +1,17 @@
+OBJECTS = 
+ALLOBJECTS := $(patsubst %.cpp,%.o,$(wildcard *.cpp))
+CFLAGS= -c -O2 -std=c++11 -I$(shell root-config --incdir) -g
+COMPILER= c++
+LINKOPTION = $(shell root-config --libs)
+
+
+nameOfProgram: nameOfProgram.o $(OBJECTS)
+	$(COMPILER) -o nameOProgram nameOfProgram.o $(OBJECTS) $(LINKOPTION) 
+
+$(ALLOBJECTS): %.o : %.cpp
+	$(COMPILER) $(CFLAGS) $< -o $@
+
+
+clean:
+	rm -f *.o
+

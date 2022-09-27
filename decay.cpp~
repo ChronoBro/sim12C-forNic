@@ -1,0 +1,645 @@
+#include "decay.h"
+
+CRandom CDecay::ran;
+float const CDecay::pi = acos(-1.);
+
+
+/**
+ * Constructor
+\param part10 is a pointer to particle 1
+\param part20 is a pointer to particle 2
+
+ */
+CDecay::CDecay(CFrag * part10, CFrag *part20,bool einstein0, float vCM0)
+{
+
+  vCM = vCM0;
+  einstein = einstein0;
+  CFrame::einstein = einstein;
+
+  frag[0] = part10;
+  frag[1] = part20;
+
+
+  real[0] = part10->real;
+  real[1] = part20->real;
+
+
+  recon[0] = part10->recon;
+  recon[1] = part20->recon;
+
+  sumA = 0.;
+  for (int i=0;i<2;i++) sumA += real[i]->A;
+
+  plfRecon = new CFrame(sumA);
+
+
+  for (int i=0;i<2;i++) 
+    {
+     partCM[i] = new CFrame(real[i]->A);
+    }
+ 
+  for (int i=0;i<180;i++)
+    {
+      float theta = ((float)i+.5)*3.14159/180.;
+      //float dsigma = pow(sin(theta),5);  // m= 2
+      //float dsigma =sin(theta)*pow((3.*pow(cos(theta),2)-1.),2); // m = 0
+      float dsigma = (1.-.92*pow(cos(theta),2))*sin(theta);
+      angle[i] = dsigma;
+      if (i > 0) angle[i] += angle[i-1];
+    }
+
+  for (int i=0;i<180;i++) 
+    {
+     angle[i] /= angle[179];
+     //cout << angle[i] << endl;
+    }
+
+
+  for (int i=0;i<360;i++)
+    {
+      float phi = ((float)i+.5)*3.14159/180.;
+      float dsigma = 3052.06;
+      dsigma -= 1.11417e5*(exp(-pow((phi - pi/2.)/(23.5031*pi/180.),2)/2.)+exp(-pow((phi - 3.*pi/2.)/(23.5031*pi/180.),2)/2.));
+      dsigma += 1.11464e5*(exp(-pow((phi - pi/2.)/(23.2806*pi/180.),2)/2.)+exp(-pow((phi - 3.*pi/2.)/(23.2806*pi/180.),2)/2.));
+      phiAngle[i] = dsigma;
+      if (i > 0) phiAngle[i] += phiAngle[i-1];
+    }
+
+  for (int i=0;i<360;i++) 
+    {
+     phiAngle[i] /= phiAngle[359];
+
+    }
+
+}
+
+
+
+
+//*********************************************************
+  /**
+   * Destructor
+   */
+CDecay::~CDecay()
+{
+  for (int i=0;i<2;i++) delete partCM[i];
+  delete plfRecon;
+  //delete profile;
+}
+//**********************************************************
+  /**
+   * returns the reconstructed kinetical energy of the fragmens in their
+   * center-of-mass frame using the real fragment velocities.
+   */
+float CDecay::getErelReal()
+{
+  return getErel(real);
+}
+//********************************************************
+//*********************************************************
+  /**
+   * returns the reconstructed kinetical energy of the fragmens in their
+   * center-of-mass frame using the reconstructed or detected
+   *  fragment velocities. 
+   */
+float CDecay::getErelRecon()
+{
+  return getErel(recon);
+}
+//*********************************************************
+float CDecay::getErel(CFrame** part)
+{
+  if (einstein) return getErelRel(part);
+  else return getErelNewton(part);
+}
+//**********************************************************
+  /** 
+   * find the relative kinetic energy of the fragments in their
+   * center-of-mass frame. Non-relativistic version
+   \param part is a pointer to the fragments velocity vectors (real or reconstructed)
+   */
+
+float CDecay::getErelNewton(CFrame** part)
+{
+
+  for (int i=0;i<3;i++) 
+   {
+     plfRecon->v[i] = 0.;
+     for (int j=0;j<2;j++)
+           plfRecon->v[i] += part[j]->v[i]*part[j]->A;
+     plfRecon->v[i] /= sumA;  
+   }
+
+  plfRecon->getEnergy();
+
+  ErelRecon = 0.;
+   for (int j=0;j<2;j++)
+     {
+       partCM[j]->velocity = 0.;
+       for (int i=0;i<3;i++)
+         {
+          partCM[j]->v[i] = part[j]->v[i] - plfRecon->v[i];
+          partCM[j]->velocity += pow(partCM[j]->v[i],2);
+         }
+       partCM[j]->energy = real[j]->A/2.*partCM[j]->velocity/pow(.9784,2);
+       partCM[j]->velocity = sqrt(partCM[j]->velocity);
+       ErelRecon += partCM[j]->energy;
+     }
+
+   return ErelRecon;
+
+}
+
+//**********************************************************
+  /** 
+   * find the relative kinetic energy of the fragments in their
+   * center-of-mass frame. Relativistic version
+   \param part is a pointer to the fragments velocity vectors (real or reconstructed)
+   */
+float CDecay::getErelRel(CFrame **part)
+{
+
+
+  for (int i=0;i<3;i++) 
+   {
+     plfRecon->pc[i] = 0.;
+     for (int j=0;j<2;j++)plfRecon->pc[i] += part[j]->pc[i];
+   }
+  plfRecon->totEnergy = 0;
+  for (int j=0;j<2;j++) plfRecon->totEnergy += part[j]->totEnergy;
+  plfRecon->getVelocityFromMom();
+
+  float vv = 0.;
+  for (int i=0;i<3;i++)
+    {
+      vv += pow(plfRecon->v[i],2);
+    }
+  vv = sqrt(vv);
+  plfRecon->theta = acos(-plfRecon->v[2]/vv);
+  plfRecon->phi = atan2(-plfRecon->v[1],-plfRecon->v[0]);
+  if (plfRecon->phi < 0.) plfRecon->phi += 2.*pi;
+
+  for (int j=0;j<2;j++)
+    for (int i=0;i<3;i++) partCM[j]->v[i] = part[j]->v[i];
+
+  //can modify original velocity frame to have beam off-axis
+  float beam_axis[3] = {-3.5,1.5,-354.};
+  float mag = sqrt(pow(beam_axis[0],2.)+pow(beam_axis[1],2.)+pow(beam_axis[2],2.));
+  //float vcm[3] = {0.,0.,-vCM};
+  float vcm[3]={beam_axis[0]/mag*vCM,beam_axis[1]/mag*vCM,beam_axis[2]/mag*vCM};
+    CFrame inCM(7.);
+    for (int i=0;i<3;i++) inCM.v[i] = -plfRecon->v[i];
+    inCM.transformVelocity(vcm);
+    inCM.getAngle();
+    theta_reactionCM = inCM.theta;
+
+
+  ErelRecon = 0.;
+   for (int j=0;j<2;j++)
+     {
+       partCM[j]->transformVelocity(plfRecon->v); //remember to uncomment this line, unless this helps
+       ErelRecon += partCM[j]->getEnergy();
+     }
+
+   return ErelRecon;
+
+
+
+
+
+
+
+}
+
+
+//************************************************************
+  /**
+   * checks to see if each of the five fragments go into separate Si strips
+   * (both front and back) and separate CsI crystals 
+   */
+bool CDecay::OnTopOf()
+{
+
+
+
+  for (int i=0;i<1;i++)
+    {
+      if (frag[i]->is_hit == 0) continue;
+    for (int j=i+1;j<2;j++)
+      {
+	if (frag[j]->is_hit == 0) continue;
+	if (frag[i]->Array->hitTower == frag[j]->Array->hitTower)
+	  {
+	    int itower = frag[i]->Array->hitTower;
+            if (frag[i]->Array->Tower[itower]->hitTele 
+                 == frag[j]->Array->Tower[itower]->hitTele) 
+	      {
+		int itele = frag[i]->Array->Tower[itower]->hitTele;
+                int icsi1 = frag[i]->Array->Tower[itower]->Tele[itele]->ICsI;
+                int icsi2 = frag[j]->Array->Tower[itower]->Tele[itele]->ICsI;
+		if (icsi1 == icsi2) return 1;
+                int ix1 = frag[i]->Array->Tower[itower]->Tele[itele]->ixStrip;
+                int ix2 = frag[j]->Array->Tower[itower]->Tele[itele]->ixStrip;
+		if (ix1 == ix2) return 1;
+                int iy1 = frag[i]->Array->Tower[itower]->Tele[itele]->iyStrip;
+                int iy2 = frag[j]->Array->Tower[itower]->Tele[itele]->iyStrip;
+		if (iy1 == iy2) return 1;
+	      }
+
+	  }
+      }
+    }
+  return 0;
+}
+
+
+//************************************************************
+  /**
+   * checks to see if each of the five fragments go into separate Si strips
+   * (both front and back) and separate CsI crystals 
+   */
+bool CDecay::OnTopOf2()
+{
+
+
+
+  for (int i=0;i<1;i++)
+    {
+      if (frag[i]->is_hit == 0) continue;
+    for (int j=i+1;j<2;j++)
+      {
+	if (frag[j]->is_hit == 0) continue;
+	if (frag[i]->Pixels.hitTele == frag[j]->Pixels.hitTele)
+	  {
+                int icsi1 = frag[i]->Pixels.ICsI;
+                int icsi2 = frag[j]->Pixels.ICsI;
+		if (icsi1 == icsi2) return true;
+                int ix1 = frag[i]->Pixels.ixStrip;
+                int ix2 = frag[j]->Pixels.ixStrip;
+		if (ix1 == ix2) return true;
+                int iy1 = frag[i]->Pixels.iyStrip;
+                int iy2 = frag[j]->Pixels.iyStrip;
+		if (iy1 == iy2) return true;
+	      
+
+	  }
+      }
+    }
+  return false;
+}
+
+  //*****************************
+    void CDecay::micro(int N,CFrame **Frag,float Ektot,float massTot)
+{
+  valarray <float> vcm(3);
+  for (int i=0;i<N;i++)
+    {
+
+      Frag[i]->v[0] = ran.Gaus(0.,1.)/Frag[i]->A;
+      Frag[i]->v[1] = ran.Gaus(0.,1.)/Frag[i]->A;
+      Frag[i]->v[2] = ran.Gaus(0.,1.)/Frag[i]->A;
+      
+      for (int j=0;j<3;j++) vcm[j] += Frag[i]->v[j]*Frag[i]->A;
+    }
+
+  vcm /= massTot;
+
+  float testTotal= 0.;
+  for (int i=0;i<N;i++)
+    {
+      Frag[i]->velocity = 0.;
+      for (int j=0;j<3;j++)
+	{
+	  Frag[i]->v[j] -= vcm[j];
+          Frag[i]->velocity += pow(Frag[i]->v[j],2);
+         }
+      Frag[i]->energy = Frag[i]->A/2.*Frag[i]->velocity/pow(.9784,2);
+      Frag[i]->velocity = sqrt(Frag[i]->velocity);
+      testTotal += Frag[i]->energy;
+    }
+  float ratio = sqrt(Ektot/testTotal);
+  for (int i=0;i<N;i++)
+    {
+      Frag[i]->velocity *= ratio;
+      for (int j=0;j<3;j++) Frag[i]->v[j] *= ratio;
+    }
+
+}
+
+//**********************************************************
+  /**
+   * Simulates the decay of 8C as two sequential prompt two-proton decays
+   * passing through the 6Be ground state. The prompt decays are each 
+   * treated as sampling available phase space.
+   */
+void CDecay::Mode(float Et)
+{
+
+  float mu = 3.*4./7.;
+  float vrel = sqrt(Et*2./mu)*0.9784;
+  float v1 = vrel*4./7.;
+  //theta = acos(1.-2.*ran.Rndm());
+  // theta = pi*ran.Rndm();
+  
+  
+  float x = ran.Rndm();
+  int i=0;
+  for(;;)
+    {
+
+      if (x <= angle[i]) break;
+      i++;
+    }
+  theta = ((float)i+.5) + ran.Gaus(0.,1.);
+
+  theta = theta/180.*3.14159;
+  
+
+
+  float phi = 2.*pi*ran.Rndm();
+  float v2 = vrel*3./7.;
+
+  
+
+  real[0]->v[0] = v1*sin(theta)*cos(phi);
+  real[0]->v[1] = v1*sin(theta)*sin(phi);
+  real[0]->v[2] = v1*cos(theta);
+
+  for (int i= 0;i<3;i++) real[1]->v[i] = -v2/v1*real[0]->v[i];
+}
+//**********************************************************
+  /**
+   * Simulates the decay of 8C as two sequential prompt two-proton decays
+   * passing through the 6Be ground state. The prompt decays are each 
+   * treated as sampling available phase space.
+   */
+void CDecay::Mode(float Et, float phiPlf)
+{
+
+  float mu = 3.*4./7.;//2.*4./6.;//<-for 6Li //3.*4./7.;//<-for 7Li
+  float vrel = sqrt(Et*2./mu)*0.9784;
+  float v1 = vrel*4./7.;//vrel*4./6.;//vrel*4./7.;
+
+  //theta = acos(-1)*ran.Rndm();
+  
+  
+  float x = ran.Rndm();
+  int i=0;
+  for(;;)
+    {
+
+      if (x <= angle[i]) break;
+      i++;
+    }
+  theta = ((float)i+.5) + ran.Gaus(0.,1.);
+
+  theta = theta/180.*3.14159;
+
+
+  x = ran.Rndm();
+  i=0;
+  for(;;)
+    {
+
+      if (x <= phiAngle[i]) break;
+      i++;
+    }
+  deltaPhi = ((float)i+.5) + ran.Gaus(0.,.5);
+
+
+  deltaPhi = deltaPhi/180*3.14159; //deltaPhi was in degrees and passing through trig functions which was screwing up the distribution 6/30/2015
+  float phi;
+  phi = phiPlf + deltaPhi;
+
+
+
+  //deltaPhi = deltaPhi/180.*3.14159;
+
+  deltaPhi = ran.Rndm()*2*3.1415927; //add next three lines in for isotropic breakup
+  theta = acos(1.-2.*ran.Rndm());
+  phi = ran.Rndm()*2*3.1415927;
+
+  
+ 
+  float v2 = vrel*3./7.;//vrel*2./6.;//<-for 6Li //vrel*3./7.;//<-for 7Li
+  //cout << "phiPlf = " << phiPlf << endl;
+  // cout << "deltaPhi = " << deltaPhi << endl;
+  //cout << phi << endl;
+  
+  //partCM[0]->v[0] = v1*sin(theta)*cos(phi); //changed these from "real" to "partCM" which is where the angular correlations are calculated
+  //partCM[0]->v[1] = v1*sin(theta)*sin(phi); //this change appeared to do nothing to help my consistency issue, of course it wouldn't because getErel reassigns these
+  //partCM[0]->v[2] = v1*cos(theta);
+
+  
+
+
+
+  real[0]->v[0] = v1*sin(theta)*cos(phi);//v1*sqrt((1-pow(cos(theta),2.))/(1+pow(tan(phi),2.)));//v1*sin(theta)*cos(phi); //presumably when 
+  real[0]->v[1] = v1*sin(theta)*sin(phi);//real[0]->v[0]*tan(phi);//v1*sin(theta)*sin(phi);
+  real[0]->v[2] = v1*cos(theta);
+
+
+  //for (int i= 0;i<3;i++) partCM[1]->v[i] = -v2/v1*partCM[0]->v[i];
+  for (int i= 0;i<3;i++) real[1]->v[i] = -v2/v1*real[0]->v[i];
+
+
+
+
+
+}
+
+
+//************************************************************
+  /**
+   * checks to see if each of the fragments go into separate Si strips
+   * (both front and back) and separate CsI crystals 
+   */
+bool CDecay::OnTopOf3()
+{
+  
+   float csistrip = frag[0]->Ring->CsIstrip;
+   float csistrip1 = frag[0]->RingCsI->CsIstrip;
+   if(csistrip!=csistrip1) return true;
+   csistrip = frag[1]->Ring->CsIstrip;
+   csistrip1 = frag[1]->RingCsI->CsIstrip;
+   if(csistrip!=csistrip1) return true; //have to make sure hit function is called somewhere (like in  frag)
+  
+  if (frag[0]->Ring->CsIstrip == frag[1]->Ring->CsIstrip) return true;
+  if (frag[0]->Ring->hitRing == frag[1]->Ring->hitRing) return true;
+  if (frag[0]->Ring->hitPie == frag[1]->Ring->hitPie) return true;
+  return false;
+}
+
+bool CDecay::OnTopOf4()
+{
+  if(frag[0]->is_hit2)
+    { if ((frag[0]->TTT2->CsIstrip1 == frag[1]->TTT2->CsIstrip1)&&(frag[0]->TTT2->CsIstrip2 == frag[1]->TTT2->CsIstrip2))return true;
+      
+      float csistrip = frag[0]->TTT2->CsIstrip1;
+      float csistrip1 = frag[0]->TTT4->CsIstrip1;
+      if(csistrip != csistrip1) return true;
+      csistrip = frag[0]->TTT2->CsIstrip2;
+      csistrip1 = frag[0]->TTT4->CsIstrip2;
+      if(csistrip != csistrip1) return true;
+       
+
+	     if(frag[1]->is_hit)
+	       {
+		 float csistrip = frag[1]->TTT->CsIstrip1;
+		 float csistrip1 = frag[1]->TTT3->CsIstrip1;
+		 if(csistrip != csistrip1) return true;
+		 csistrip = frag[1]->TTT->CsIstrip2;
+		 csistrip1 = frag[1]->TTT3->CsIstrip2;
+		 if(csistrip != csistrip1) return true;
+	       }
+	   if(frag[1]->is_hit2)
+	     {
+	       float csistrip = frag[1]->TTT2->CsIstrip1;
+	       float csistrip1 = frag[1]->TTT4->CsIstrip1;
+	       if(csistrip != csistrip1) return true;
+	       csistrip = frag[1]->TTT2->CsIstrip2;
+	       csistrip1 = frag[1]->TTT4->CsIstrip2;
+	       if(csistrip != csistrip1) return true;
+	     }
+
+	   if (frag[0]->TTT2->hitx == frag[1]->TTT2->hitx) return true;  
+	   if (frag[0]->TTT2->hity == frag[1]->TTT2->hity) return true; 
+	   return false;
+    }
+  if(frag[0]->is_hit)
+    { 
+      int CsI0s1= frag[0]->TTT->CsIstrip1;
+      int CsI0s2= frag[0]->TTT->CsIstrip2;
+      int CsI1s1= frag[1]->TTT->CsIstrip1;
+      int CsI1s2= frag[1]->TTT->CsIstrip2;
+      float csistrip = frag[0]->TTT3->CsIstrip1;
+      float csistrip1 = frag[0]->TTT3->CsIstrip2;
+      if(CsI0s1 != csistrip) return true;
+      if(CsI0s2 != csistrip1) return true;
+
+   
+      if(frag[1]->is_hit)
+	{
+	  float csistrip = frag[1]->TTT->CsIstrip1; 
+	  float csistrip1 = frag[1]->TTT3->CsIstrip1;
+	  if(csistrip != csistrip1) return true;
+	  csistrip = frag[1]->TTT->CsIstrip2;
+	  csistrip1 = frag[1]->TTT3->CsIstrip2;
+	  if(csistrip != csistrip1) return true;
+	}
+      
+
+      if(frag[1]->is_hit2)
+  	{
+	  float csistrip = frag[1]->TTT2->CsIstrip1;
+	  float csistrip1 = frag[1]->TTT4->CsIstrip1;
+	  if(csistrip != csistrip1) return true;
+	  csistrip = frag[1]->TTT2->CsIstrip2;
+	  csistrip1 = frag[1]->TTT4->CsIstrip2;
+	  if(csistrip != csistrip1) return true;
+   	}
+ 
+      if((CsI0s1==CsI1s1)&&(CsI0s2==CsI1s2)) return true;
+
+      if (frag[0]->TTT->hitx == frag[1]->TTT->hitx) return true;
+      if (frag[0]->TTT->hity == frag[1]->TTT->hity) return true;
+      return false;
+    }
+
+  return false;
+}
+
+bool CDecay::OnTopOf5()
+{
+ float csistrip = frag[0]->Ring2->CsIstrip;
+    float csistrip1 = frag[0]->Ring2CsI->CsIstrip;
+   if(csistrip!=csistrip1) return true;
+   csistrip = frag[1]->Ring2->CsIstrip;
+   csistrip1 = frag[1]->Ring2CsI->CsIstrip;
+   if(csistrip!=csistrip1) return true;
+
+  if (frag[0]->Ring2->CsIstrip == frag[1]->Ring2->CsIstrip) return true;
+  if (frag[0]->Ring2->hitRing == frag[1]->Ring2->hitRing) return true;
+  if (frag[0]->Ring2->hitPie == frag[1]->Ring2->hitPie) return true;
+  return false;
+}
+
+bool CDecay::OnTopOf6()
+{
+  if(frag[0]->is_hit)
+    {
+
+      float csistrip = frag[0]->Ring->CsIstrip;
+      float csistrip1 = frag[0]->RingCsI->CsIstrip;
+      if(csistrip!=csistrip1) return true;
+      // csistrip = frag[1]->Ring->CsIstrip;
+      // csistrip1 = frag[1]->RingCsI->CsIstrip;
+      if(csistrip!=csistrip1) return true;
+
+
+
+      if(frag[1]->is_hit)
+	   	{
+	  	  csistrip = frag[1]->Ring->CsIstrip;
+		  csistrip1 = frag[1]->RingCsI->CsIstrip;
+		  if(csistrip != csistrip1) return true;
+		  if (frag[0]->Ring->CsIstrip == frag[1]->Ring->CsIstrip) return true;
+		  if (frag[0]->Ring->hitRing == frag[1]->Ring->hitRing) return true;
+		  if (frag[0]->Ring->hitPie == frag[1]->Ring->hitPie) return true;
+	     	}
+      if(frag[1]->is_hit2)
+		{
+	  	  csistrip = frag[1]->Ring2->CsIstrip;
+		  csistrip1 = frag[1]->Ring2CsI->CsIstrip;
+		  if(csistrip != csistrip1) return true;
+	  	}
+    }
+  else if(frag[0]->is_hit2)
+    {
+
+      float csistrip = frag[0]->Ring2->CsIstrip;
+      float csistrip1 = frag[0]->Ring2CsI->CsIstrip;
+      if(csistrip!=csistrip1) return true;
+      //csistrip = frag[1]->Ring2->CsIstrip;
+      //csistrip1 = frag[1]->Ring2CsI->CsIstrip;
+      if(csistrip!=csistrip1) return true;
+
+      if(frag[1]->is_hit)
+	   	{
+	  	  csistrip = frag[1]->Ring->CsIstrip;
+		  csistrip1 = frag[1]->RingCsI->CsIstrip;
+		  if(csistrip != csistrip1) return true;
+
+	     	}
+      if(frag[1]->is_hit2)
+		{
+	  	  csistrip = frag[1]->Ring2->CsIstrip;
+		  csistrip1 = frag[1]->Ring2CsI->CsIstrip;
+		  if(csistrip != csistrip1) return true;
+		  if (frag[0]->Ring2->CsIstrip == frag[1]->Ring2->CsIstrip) return true;
+		  if (frag[0]->Ring2->hitRing == frag[1]->Ring2->hitRing) return true;
+		  if (frag[0]->Ring2->hitPie == frag[1]->Ring2->hitPie) return true;
+	  	}
+
+    }
+  
+  return false;
+}
+
+
+bool CDecay::OnTopOf7()
+{
+  
+   float csistrip = frag[0]->Ring->CsIstrip;
+   float csistrip1 = frag[0]->RingCsI->CsIstrip;
+   if(csistrip!=csistrip1) return true;
+   //csistrip = 50,000.;//frag[1]->Ring->CsIstrip;
+   //csistrip1 = 50,000.;//frag[1]->RingCsI->CsIstrip;
+   if(csistrip!=csistrip1) return true; //have to make sure hit function is called somewhere (like in  frag)
+  
+   // if (frag[0]->Ring->CsIstrip == frag[1]->Ring->CsIstrip) return true;
+   //if (frag[0]->Ring->hitRing == frag[1]->Ring->hitRing) return true;
+   //if (frag[0]->Ring->hitPie == frag[1]->Ring->hitPie) return true;
+  return false;
+}

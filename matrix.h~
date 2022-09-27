@@ -1,0 +1,17 @@
+#ifndef matrix_
+#define matrix_
+#include <iosteam>
+#include <math.h>
+using namespace std;
+
+class matrix
+{
+ public:
+  matrix(int size);
+  ~matrix();
+  float mult(float ** A, float ** B);
+  float add(float ** A, float ** B);
+  float subtract(float **A, float ** B);
+  
+};
+#endif

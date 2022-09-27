@@ -1,0 +1,29 @@
+#include "matrix.h"
+
+
+matrix::matrix(int rows, int columns)
+{
+
+  C = new float*[rows];
+  for(int i=0;i<rows;i++)
+    C[i] = new float[columns];
+  vect1 = new float[rows];
+  vect2 = new float[columns];
+  i,j,k,l,m =0;
+
+
+}
+
+matrix::~matrix()
+{
+  delete C;
+}
+
+float ** mult(float ** A)
+{
+  for(
+
+  for(int i =0; i < columns)
+
+
+}
